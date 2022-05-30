@@ -5,7 +5,7 @@ import {Item} from "@models/item";
 import {Order} from "@models/order";
 
 class IndexController {
-  public nano = Nano('https://admin:nyM7rRqoHFD7Vm4Y8mhyXpHStQ2gvVAi@couchdb.tunfis.ch');
+  public nano = Nano('https://admin:password@host');
   public db = this.nano.db.use('onlineshop2');
 
   public designDocs = [
