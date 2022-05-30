@@ -5,12 +5,102 @@ import {Item} from "@models/item";
 import {Order} from "@models/order";
 
 class IndexController {
-  public nano = Nano('https://admin:password@localhost');
-  public db = this.nano.db.use('onlineshop');
+  public nano = Nano('https://admin:nyM7rRqoHFD7Vm4Y8mhyXpHStQ2gvVAi@couchdb.tunfis.ch');
+  public db = this.nano.db.use('onlineshop2');
+
+  public designDocs = [
+    {
+      "_id": "_design/customer",
+      "views": {
+        "by-username": {
+          "map": "function (doc) {\n  if(doc && doc.username) {\n    emit(doc.username, doc._id)\n  }\n}\n"
+        },
+        "customerBasket": {
+          "map": "function(doc) {\n  if (doc.type === 'customer') {\n    for (var item in doc.basketItems) {\n      emit(doc.username, doc.basketItems[item]);\n    }\n  }\n}"
+        },
+        "customerBasketSum": {
+          "map": "function(doc) {\n  if (doc.type === 'customer') {\n    var sum = 0;\n    for (var item in doc.basketItems) {\n      sum = sum + doc.basketItems[item].price;\n    }\n    emit(doc.username, sum);\n  }\n}"
+        }
+      },
+      "language": "javascript"
+    },
+
+    {
+      "_id": "_design/items",
+      "views": {
+        "by-category": {
+          "map": "function (doc) {\n  if(doc.type === 'item' && doc.category) {\n    emit(doc.category, doc._id);\n  }\n}"
+        },
+        "all": {
+          "map": "function (doc) {\n  if(doc.type === 'item') {\n    emit(doc._id, null);\n  }\n}"
+        },
+        "customers-having-item-in-basket": {
+          "map": "function (doc) {\n  if (doc.type === 'customer') {\n    doc.basketItems.forEach(item => {\n        emit(doc._id, item);\n    })\n  }\n}",
+          "reduce": "_count"
+        }
+      },
+      "language": "javascript"
+    }
+  ];
+
 
   public constructor() {
-    this.nano.info().then(info => console.log(info))
-    this.db.info().then(info => console.log(info))
+    this.nano.request({
+      db: 'onlineshop2',
+      method: 'get',
+      path: '_design_docs?include_docs=true'
+    }).then(res => {
+      const dbDocuments: any[] = res.rows;
+
+      const serverDocIds: string[] = dbDocuments.map(doc => doc.doc._id);
+      const clientDocIds: string[] = this.designDocs.map(doc => doc._id);
+      const uploadDocs: any[] =[];
+      const toDelete: any[] =[];
+
+      const serverDocMap: Map<string, any> = new Map<string, any>();
+      const localDocMap: Map<string, any> = new Map<string, any>();
+      dbDocuments.forEach(doc => {
+        serverDocMap.set(doc.doc._id, doc.doc);
+      });
+
+      this.designDocs.forEach(doc => {
+        localDocMap.set(doc._id, doc);
+      });
+
+      serverDocIds.forEach(id => {
+        if (localDocMap.has(id)) {
+          const newer = localDocMap.get(id);
+          const older = serverDocMap.get(id);
+          newer._rev = older._rev;
+          localDocMap.delete(id);
+          serverDocMap.delete(id)
+          uploadDocs.push(newer);
+
+          const idx = clientDocIds.findIndex(cId => id == cId);
+          if (idx >= 0) {
+            clientDocIds.splice(idx, 1);
+          }
+        } else {
+          const older = serverDocMap.get(id);
+          toDelete.push(older);
+          serverDocMap.delete(id);
+        }
+      })
+      clientDocIds.forEach(id => {
+        if (localDocMap.has(id)) {
+          const doc = localDocMap.get(id);
+          uploadDocs.push(doc);
+        }
+      })
+
+      for (let uploadDoc of uploadDocs) {
+        this.db.insert(uploadDoc).then();
+      }
+
+      for (let toDeleteElement of toDelete) {
+        this.db.destroy(toDeleteElement._id, toDeleteElement._rev).then();
+      }
+    })
   }
 
   public getCustomerByUsername = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
