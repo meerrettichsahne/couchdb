@@ -35,7 +35,7 @@ class IndexController {
           "map": "function (doc) {\n  if(doc.type === 'item') {\n    emit(doc._id, null);\n  }\n}"
         },
         "customers-having-item-in-basket": {
-          "map": "function (doc) {\n  if (doc.type === 'customer') {\n    doc.basketItems.forEach(item => {\n        emit(doc._id, item);\n    })\n  }\n}",
+          "map": "function (doc) {\n  if (doc.type === 'customer') {\n    doc.basketItems.forEach(item => {\n        emit(doc._id, 1);\n    })\n  }\n}",
           "reduce": "_count"
         }
       },
